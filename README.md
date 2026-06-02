@@ -109,6 +109,13 @@
 - Vercel
 - Render
 
+### Backend & Database Setup
+- `npm install` to install dependencies
+- Copy `.env.example` to `.env` and set the PostgreSQL connection values
+- Create the database if needed, for example `createdb naru` or via your Postgres admin tool
+- Run `npm run db:setup` to apply `db/schema.sql` and `db/seed.sql`
+- Start the server locally with `npm run start:dev`
+
 ---
 
 ## 📊 핵심 기능 요약
