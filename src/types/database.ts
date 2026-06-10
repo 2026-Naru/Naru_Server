@@ -265,6 +265,35 @@ export type Database = {
           },
         ];
       };
+      store_view_history: {
+        Row: {
+          user_id: number;
+          store_id: number;
+          viewed_at: string | null;
+        };
+        Insert: {
+          user_id: number;
+          store_id: number;
+          viewed_at?: string | null;
+        };
+        Update: {
+          viewed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_view_history_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_view_history_store_id_fkey';
+            columns: ['store_id'];
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       reviews: {
         Row: {
           id: number;

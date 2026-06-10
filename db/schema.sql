@@ -1,6 +1,7 @@
 BEGIN;
 
 DROP TABLE IF EXISTS user_favorites;
+DROP TABLE IF EXISTS store_view_history;
 DROP TABLE IF EXISTS balances;
 DROP TABLE IF EXISTS exchanges;
 DROP TABLE IF EXISTS reviews;
@@ -111,6 +112,13 @@ CREATE TABLE user_favorites (
     store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, store_id)
+);
+
+CREATE TABLE store_view_history (
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
+    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, store_id)
 );
 
 CREATE TABLE exchanges (

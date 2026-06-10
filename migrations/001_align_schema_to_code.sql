@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS public.user_favorites (
   PRIMARY KEY (user_id, store_id)
 );
 
+-- ── store_view_history: account-scoped recently viewed stores ──
+CREATE TABLE IF NOT EXISTS public.store_view_history (
+  user_id   bigint NOT NULL REFERENCES public.users(id)  ON DELETE CASCADE,
+  store_id  bigint NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
+  viewed_at timestamp without time zone DEFAULT now(),
+  PRIMARY KEY (user_id, store_id)
+);
+
 -- ── orders: /api/v1/users/me/orders selects paid_amount/address/paid_at/type/payment_method
 --    Mirror the existing columns where possible so data is correct, not null. ──
 ALTER TABLE public.orders
@@ -50,6 +58,8 @@ ALTER TABLE public.orders
   ADD COLUMN IF NOT EXISTS address        text    GENERATED ALWAYS AS (delivery_address) STORED;
 ALTER TABLE public.orders
   ADD COLUMN IF NOT EXISTS paid_at        timestamp without time zone GENERATED ALWAYS AS (ordered_at) STORED;
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS completed_at   timestamp without time zone;
 ALTER TABLE public.orders
   ADD COLUMN IF NOT EXISTS type           character varying DEFAULT 'DELIVERY';
 ALTER TABLE public.orders

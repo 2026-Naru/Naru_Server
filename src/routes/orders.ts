@@ -12,6 +12,8 @@ const ORDER_STATUS_GAUGE: Record<string, number> = {
   CANCELED: 0,
 };
 
+const ORDER_STATUSES = Object.keys(ORDER_STATUS_GAUGE);
+
 // POST /api/v1/orders  [auth]
 router.post('/', authMiddleware, async (req, res, next) => {
   try {
@@ -193,6 +195,57 @@ router.get('/:orderId/status', async (req, res, next) => {
       success: true,
       message: '주문 상태 조회 성공',
       data: { status, gauge: ORDER_STATUS_GAUGE[status] ?? 0 },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PATCH /api/v1/orders/:orderId/status  [auth]
+router.patch('/:orderId/status', authMiddleware, async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    const status = typeof req.body.status === 'string' ? req.body.status.toUpperCase() : '';
+
+    if (!orderId || Number.isNaN(orderId)) {
+      return res.status(400).json({ success: false, message: '올바른 orderId가 필요합니다.' });
+    }
+
+    if (!ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: '올바른 주문 상태가 필요합니다.' });
+    }
+
+    const patch: {
+      status: string;
+      completed_at?: string;
+    } = { status };
+    if (status === 'COMPLETED') {
+      patch.completed_at = new Date().toISOString();
+    }
+
+    const { data: order, error } = await supabase
+      .from('orders')
+      .update(patch)
+      .eq('id', orderId)
+      .eq('user_id', req.userId!)
+      .select('id, status, completed_at')
+      .maybeSingle();
+
+    if (error) {
+      return res.status(400).json({ success: false, message: '주문 상태 변경 실패', error: error.message });
+    }
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: '주문을 찾을 수 없습니다.' });
+    }
+
+    res.json({
+      success: true,
+      message: '주문 상태 변경 성공',
+      data: {
+        ...order,
+        gauge: ORDER_STATUS_GAUGE[order.status ?? status] ?? 0,
+      },
     });
   } catch (e) {
     next(e);

@@ -80,6 +80,55 @@ router.get('/me/favorites', async (req, res, next) => {
   }
 });
 
+// GET /api/v1/users/me/store-history
+router.get('/me/store-history', async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('store_view_history')
+      .select('store_id, viewed_at, stores(id, name, description, image_url, rating, review_count, categories(name))')
+      .eq('user_id', req.userId!)
+      .order('viewed_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      return res.status(400).json({ success: false, message: '최근 본 가게 조회 실패', error: error.message });
+    }
+
+    res.json({ success: true, message: `${data.length}개 최근 본 가게 조회`, data });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/v1/users/me/store-history  body: { storeId }
+router.post('/me/store-history', async (req, res, next) => {
+  try {
+    const storeId = Number(req.body.storeId);
+    if (!storeId || Number.isNaN(storeId)) {
+      return res.status(400).json({ success: false, message: 'storeId가 필요합니다.' });
+    }
+
+    const { error } = await supabase
+      .from('store_view_history')
+      .upsert(
+        {
+          user_id: req.userId!,
+          store_id: storeId,
+          viewed_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,store_id' },
+      );
+
+    if (error) {
+      return res.status(400).json({ success: false, message: '최근 본 가게 저장 실패', error: error.message });
+    }
+
+    res.status(201).json({ success: true, message: '최근 본 가게에 저장됐습니다.' });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/v1/users/me/favorites  body: { storeId }
 router.post('/me/favorites', async (req, res, next) => {
   try {
