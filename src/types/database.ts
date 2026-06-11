@@ -273,6 +273,7 @@ export type Database = {
           rating: number | null;
           content: string | null;
           country: string | null;
+          image_url: string | null;
           created_at: string | null;
         };
         Insert: {
@@ -281,11 +282,13 @@ export type Database = {
           rating?: number | null;
           content?: string | null;
           country?: string | null;
+          image_url?: string | null;
         };
         Update: {
           rating?: number | null;
           content?: string | null;
           country?: string | null;
+          image_url?: string | null;
         };
         Relationships: [];
       };

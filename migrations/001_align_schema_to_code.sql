@@ -34,6 +34,10 @@ ALTER TABLE public.users
 ALTER TABLE public.reviews
   ADD COLUMN IF NOT EXISTS country character varying;
 
+-- ── reviews: /api/v1/stores/:id/reviews selects and writes review images ──
+ALTER TABLE public.reviews
+  ADD COLUMN IF NOT EXISTS image_url text;
+
 -- ── user_favorites: /api/v1/users/me/favorites (table did not exist) ──
 CREATE TABLE IF NOT EXISTS public.user_favorites (
   user_id    bigint NOT NULL REFERENCES public.users(id)  ON DELETE CASCADE,

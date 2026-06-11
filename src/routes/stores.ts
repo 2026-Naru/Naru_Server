@@ -4,6 +4,24 @@ import { authMiddleware } from '../middleware/auth';
 
 const router = express.Router();
 
+type ReviewRow = Record<string, unknown>;
+
+function reviewImageUrl(row: ReviewRow): string | null {
+  const keys = ['image_url', 'imageUrl', 'review_image_url', 'reviewImageUrl', 'photo_url', 'photoUrl', 'image'];
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return null;
+}
+
+function serializeReview(row: ReviewRow) {
+  return {
+    ...row,
+    image_url: reviewImageUrl(row),
+  };
+}
+
 // GET /api/v1/stores/search?query=...&categoryId=1
 router.get('/search', async (req, res, next) => {
   try {
@@ -56,7 +74,8 @@ router.get('/nearby', async (req, res, next) => {
 router.post('/:storeId/reviews', authMiddleware, async (req, res, next) => {
   try {
     const storeId = Number(req.params.storeId);
-    const { rating, content, country } = req.body;
+    const { rating, content, country, imageUrl, image_url } = req.body;
+    const reviewImageUrl = imageUrl ?? image_url ?? null;
 
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ success: false, message: 'rating은 1~5 사이여야 합니다.' });
@@ -74,15 +93,22 @@ router.post('/:storeId/reviews', authMiddleware, async (req, res, next) => {
 
     const { data: review, error } = await supabase
       .from('reviews')
-      .insert({ store_id: storeId, user_id: req.userId!, rating, content: content ?? null, country: country ?? null })
-      .select('id, rating, content, country, image_url, created_at')
+      .insert({
+        store_id: storeId,
+        user_id: req.userId!,
+        rating,
+        content: content ?? null,
+        country: country ?? null,
+        image_url: reviewImageUrl,
+      })
+      .select('*')
       .single();
 
     if (error) {
       return res.status(400).json({ success: false, message: '리뷰 작성 실패', error: error.message });
     }
 
-    res.status(201).json({ success: true, message: '리뷰를 작성했습니다.', data: review });
+    res.status(201).json({ success: true, message: '리뷰를 작성했습니다.', data: serializeReview(review) });
   } catch (e) {
     next(e);
   }
@@ -95,7 +121,7 @@ router.get('/:storeId/reviews', async (req, res, next) => {
 
     const { data, error } = await supabase
       .from('reviews')
-      .select('id, rating, content, country, image_url, created_at, users(name)')
+      .select('*, users(name)')
       .eq('store_id', storeId)
       .order('created_at', { ascending: false });
 
@@ -103,7 +129,8 @@ router.get('/:storeId/reviews', async (req, res, next) => {
       return res.status(400).json({ success: false, message: '리뷰 조회 실패', error: error.message });
     }
 
-    res.json({ success: true, message: `${data.length}개 리뷰 조회`, data });
+    const reviews = (data ?? []).map((row) => serializeReview(row));
+    res.json({ success: true, message: `${reviews.length}개 리뷰 조회`, data: reviews });
   } catch (e) {
     next(e);
   }

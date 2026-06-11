@@ -102,6 +102,7 @@ CREATE TABLE reviews (
     rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
     content TEXT,
     country VARCHAR(20),
+    image_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
