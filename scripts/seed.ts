@@ -86,7 +86,7 @@ async function seed() {
   if (storesError) throw new Error(`stores: ${storesError.message}`);
   console.log(`✅ stores (${stores?.length}건)`);
 
-  const [store1, store2, store3] = stores!;
+  const [store1, store2, store3, store4] = stores!;
 
   // ─── Menus ────────────────────────────────────────────────────────────────
   const { data: menus, error: menusError } = await supabase
@@ -115,6 +115,30 @@ async function seed() {
         price: 19000,
         image_url: 'assets/images/Spicyseasoned.png',
         allergy_notice: 'chicken, wheat, soy',
+      },
+      {
+        store_id: store4.id,
+        name: 'Iced Americano',
+        description: 'Fresh espresso over ice with a clean finish.',
+        price: 3500,
+        image_url: 'assets/images/food_cafe.png',
+        allergy_notice: null,
+      },
+      {
+        store_id: store4.id,
+        name: 'Cafe Latte',
+        description: 'Espresso with steamed milk for a smooth cafe classic.',
+        price: 4500,
+        image_url: 'assets/images/food_cafe.png',
+        allergy_notice: 'milk',
+      },
+      {
+        store_id: store4.id,
+        name: 'Grapefruit Ade',
+        description: 'Sparkling grapefruit ade with a bright citrus taste.',
+        price: 5200,
+        image_url: 'assets/images/food_cafe.png',
+        allergy_notice: null,
       },
     ])
     .select();
