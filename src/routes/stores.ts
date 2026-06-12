@@ -7,7 +7,20 @@ const router = express.Router();
 type ReviewRow = Record<string, unknown>;
 
 function reviewImageUrl(row: ReviewRow): string | null {
-  const keys = ['image_url', 'imageUrl', 'review_image_url', 'reviewImageUrl', 'photo_url', 'photoUrl', 'image'];
+  const keys = [
+    'image_url',
+    'imageUrl',
+    'review_image_url',
+    'reviewImageUrl',
+    'review_image',
+    'reviewImage',
+    'photo_url',
+    'photoUrl',
+    'thumbnail_url',
+    'thumbnailUrl',
+    'url',
+    'image',
+  ];
   for (const key of keys) {
     const value = row[key];
     if (typeof value === 'string' && value.trim()) return value;
@@ -121,7 +134,7 @@ router.get('/:storeId/reviews', async (req, res, next) => {
 
     const { data, error } = await supabase
       .from('reviews')
-      .select('*, users(name)')
+      .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: false });
 
@@ -129,7 +142,35 @@ router.get('/:storeId/reviews', async (req, res, next) => {
       return res.status(400).json({ success: false, message: '리뷰 조회 실패', error: error.message });
     }
 
-    const reviews = (data ?? []).map((row) => serializeReview(row));
+    const rows = data ?? [];
+    const userIds = [...new Set(
+      rows
+        .map((row) => row.user_id)
+        .filter((id): id is number => typeof id === 'number')
+    )];
+    const userNameById = new Map<number, string>();
+
+    if (userIds.length > 0) {
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', userIds);
+
+      if (usersError) {
+        return res.status(400).json({ success: false, message: '리뷰 작성자 조회 실패', error: usersError.message });
+      }
+
+      for (const user of users ?? []) {
+        if (typeof user.id === 'number' && typeof user.name === 'string') {
+          userNameById.set(user.id, user.name);
+        }
+      }
+    }
+
+    const reviews = rows.map((row) => serializeReview({
+      ...row,
+      user_name: typeof row.user_id === 'number' ? userNameById.get(row.user_id) ?? null : null,
+    }));
     res.json({ success: true, message: `${reviews.length}개 리뷰 조회`, data: reviews });
   } catch (e) {
     next(e);
