@@ -12,6 +12,14 @@ const ORDER_STATUS_GAUGE: Record<string, number> = {
   CANCELED: 0,
 };
 
+type MenuSnapshot = {
+  id: number;
+  name: string | null;
+  price: number;
+  image_url: string | null;
+  store_id: number | null;
+};
+
 // POST /api/v1/orders  [auth]
 router.post('/', authMiddleware, async (req, res, next) => {
   try {
@@ -84,16 +92,49 @@ router.post('/', authMiddleware, async (req, res, next) => {
       return res.status(400).json({ success: false, message: '주문할 항목이 없습니다.' });
     }
 
+    const directMenuIds = [
+      ...new Set(
+        directItems
+          .map((item) => item.menuId)
+          .filter(
+            (menuId): menuId is number =>
+              typeof menuId === 'number' && Number.isFinite(menuId) && menuId > 0,
+          ),
+      ),
+    ];
+    const directMenusById = new Map<number, MenuSnapshot>();
+
+    if (directMenuIds.length > 0) {
+      const { data: directMenus, error: directMenusError } = await supabase
+        .from('menus')
+        .select('id, name, price, image_url, store_id')
+        .in('id', directMenuIds);
+
+      if (directMenusError) {
+        return res.status(400).json({ success: false, message: '메뉴 정보 조회 실패', error: directMenusError.message });
+      }
+
+      for (const menu of directMenus ?? []) {
+        directMenusById.set(menu.id, menu as MenuSnapshot);
+      }
+    }
+
     const firstMenu = cartItems[0]?.menus as { store_id: number | null } | null | undefined;
     const directStoreId = directItems.find((item) => item.storeId && item.storeId > 0)?.storeId ?? null;
-    const storeId = firstMenu?.store_id ?? directStoreId;
+    const directMenuStoreId =
+      [...directMenusById.values()].find((menu) => menu.store_id && menu.store_id > 0)?.store_id ?? null;
+    const storeId = firstMenu?.store_id ?? directStoreId ?? directMenuStoreId;
 
     const calculatedAmount = cartItems.length > 0
       ? cartItems.reduce((sum, ci) => {
           const menu = ci.menus as { price: number } | null;
           return sum + (menu?.price ?? 0) * (ci.quantity ?? 1);
         }, 0)
-      : directItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      : directItems.reduce((sum, item) => {
+          const menu = item.menuId ? directMenusById.get(item.menuId) : null;
+          const price = item.price > 0 ? item.price : menu?.price ?? 0;
+          return sum + price * item.quantity;
+        }, 0);
 
     const orderTotalAmount = Math.max(Number(totalAmount) || 0, calculatedAmount);
 
@@ -125,14 +166,17 @@ router.post('/', authMiddleware, async (req, res, next) => {
             price: menu?.price ?? 0,
           };
         })
-      : directItems.map((item) => ({
-          order_id: order.id,
-          menu_id: item.menuId && item.menuId > 0 ? item.menuId : null,
-          menu_name: item.name,
-          menu_image: item.imageUrl,
-          quantity: item.quantity,
-          price: item.price,
-        }));
+      : directItems.map((item) => {
+          const menu = item.menuId ? directMenusById.get(item.menuId) : null;
+          return {
+            order_id: order.id,
+            menu_id: item.menuId && item.menuId > 0 ? item.menuId : null,
+            menu_name: item.name ?? menu?.name ?? null,
+            menu_image: item.imageUrl ?? menu?.image_url ?? null,
+            quantity: item.quantity,
+            price: item.price > 0 ? item.price : menu?.price ?? 0,
+          };
+        });
 
     const { error: itemsError } = await supabase.from('order_items').insert(orderItemRows as any);
     if (itemsError) {
