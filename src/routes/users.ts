@@ -6,6 +6,87 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
+type MaybeArray<T> = T | T[] | null | undefined;
+
+type StoreSummary = {
+  id: number | null;
+  name: string | null;
+  image_url: string | null;
+};
+
+type MenuSummary = {
+  id?: number | null;
+  name?: string | null;
+  image_url?: string | null;
+  store_id?: number | null;
+  stores?: MaybeArray<StoreSummary>;
+};
+
+type OrderItemSummary = {
+  id: number;
+  menu_id: number | null;
+  quantity: number | null;
+  price: number | null;
+  menu_name?: string | null;
+  menu_image?: string | null;
+  menus?: MaybeArray<MenuSummary>;
+};
+
+type OrderSummary = {
+  id: number;
+  status: string | null;
+  total_amount?: number | null;
+  paid_amount?: number | null;
+  delivery_address?: string | null;
+  ordered_at?: string | null;
+  paid_at?: string | null;
+  completed_at?: string | null;
+  stores?: MaybeArray<StoreSummary>;
+  order_items?: OrderItemSummary[] | null;
+};
+
+function firstRelation<T>(value: MaybeArray<T>): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function cleanString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function serializeOrder(row: OrderSummary) {
+  const orderItems = (row.order_items ?? []).map((item) => {
+    const menu = firstRelation(item.menus);
+    return {
+      ...item,
+      menu_name: cleanString(item.menu_name) ?? cleanString(menu?.name),
+      menu_image: cleanString(item.menu_image) ?? cleanString(menu?.image_url),
+      menus: menu
+        ? {
+            id: menu.id ?? item.menu_id,
+            name: cleanString(menu.name),
+            image_url: cleanString(menu.image_url),
+            store_id: menu.store_id ?? null,
+          }
+        : null,
+    };
+  });
+
+  const directStore = firstRelation(row.stores);
+  const menuStore = firstRelation(
+    firstRelation((row.order_items ?? []).find((item) => firstRelation(item.menus)?.stores)?.menus)?.stores,
+  );
+  const store = directStore ?? menuStore;
+
+  return {
+    ...row,
+    stores: store,
+    store_name: cleanString(store?.name),
+    store_image_url: cleanString(store?.image_url),
+    order_items: orderItems,
+  };
+}
+
 // GET /api/v1/users/me
 router.get('/me', async (req, res, next) => {
   try {
@@ -36,7 +117,10 @@ router.get('/me/orders', async (req, res, next) => {
       .select(`
         id, status, total_amount, delivery_address, ordered_at, completed_at,
         stores(id, name, image_url),
-        order_items(id, menu_id, quantity, price, menu_name, menu_image, menus(name, image_url))
+        order_items(
+          id, menu_id, quantity, price, menu_name, menu_image,
+          menus(id, name, image_url, store_id, stores(id, name, image_url))
+        )
       `)
       .eq('user_id', req.userId!)
       .order('ordered_at', { ascending: false });
@@ -55,7 +139,8 @@ router.get('/me/orders', async (req, res, next) => {
       return res.status(400).json({ success: false, message: '주문 내역 조회 실패', error: error.message });
     }
 
-    res.json({ success: true, message: `${data.length}개 주문 조회`, data });
+    const orders = (data ?? []).map((row) => serializeOrder(row as unknown as OrderSummary));
+    res.json({ success: true, message: `${orders.length}개 주문 조회`, data: orders });
   } catch (e) {
     next(e);
   }
