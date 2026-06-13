@@ -29,6 +29,7 @@ router.post('/', authMiddleware, async (req, res, next) => {
       cartItemIds,
       totalAmount,
       items,
+      couponId,
     } = req.body;
 
     if (!['DELIVERY', 'PICKUP'].includes(type)) {
@@ -136,7 +137,47 @@ router.post('/', authMiddleware, async (req, res, next) => {
           return sum + price * item.quantity;
         }, 0);
 
-    const orderTotalAmount = Math.max(Number(totalAmount) || 0, calculatedAmount);
+    let discountAmount = 0;
+    let selectedUserCouponId: number | null = null;
+
+    if (couponId != null) {
+      const userCouponId = Number(couponId);
+      if (!Number.isFinite(userCouponId) || userCouponId <= 0) {
+        return res.status(400).json({ success: false, message: 'couponId가 올바르지 않습니다.' });
+      }
+
+      const { data: userCoupon, error: couponError } = await supabase
+        .from('user_coupons')
+        .select('id, is_used, coupons(id, name, discount_amount, expires_at)')
+        .eq('id', userCouponId)
+        .eq('user_id', req.userId!)
+        .maybeSingle();
+
+      if (couponError || !userCoupon) {
+        return res.status(404).json({ success: false, message: '사용 가능한 쿠폰을 찾을 수 없습니다.' });
+      }
+
+      const coupon = Array.isArray(userCoupon.coupons)
+        ? userCoupon.coupons[0]
+        : userCoupon.coupons;
+
+      if (userCoupon.is_used || !coupon) {
+        return res.status(400).json({ success: false, message: '이미 사용된 쿠폰입니다.' });
+      }
+      if (coupon.expires_at && new Date(coupon.expires_at).getTime() <= Date.now()) {
+        return res.status(400).json({ success: false, message: '만료된 쿠폰입니다.' });
+      }
+
+      discountAmount = Math.max(0, Number(coupon.discount_amount) || 0);
+      selectedUserCouponId = userCouponId;
+    }
+
+    const discountedAmount = Math.max(0, calculatedAmount - discountAmount);
+    const requestedTotalAmount = Number(totalAmount);
+    const orderTotalAmount =
+      Number.isFinite(requestedTotalAmount) && requestedTotalAmount >= 0
+        ? Math.min(requestedTotalAmount, discountedAmount)
+        : discountedAmount;
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -187,7 +228,19 @@ router.post('/', authMiddleware, async (req, res, next) => {
       await supabase.from('cart_items').delete().in('id', cartItems.map((ci) => ci.id));
     }
 
-    res.status(201).json({ success: true, message: '주문이 완료됐습니다.', data: order });
+    if (selectedUserCouponId != null) {
+      await supabase
+        .from('user_coupons')
+        .update({ is_used: true, used_at: new Date().toISOString() })
+        .eq('id', selectedUserCouponId)
+        .eq('user_id', req.userId!);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: '주문이 완료됐습니다.',
+      data: { ...order, discount_amount: discountAmount, coupon_id: selectedUserCouponId },
+    });
   } catch (e) {
     next(e);
   }
