@@ -45,6 +45,20 @@ type OrderSummary = {
   order_items?: OrderItemSummary[] | null;
 };
 
+type UserCouponSummary = {
+  id: number;
+  user_id: number | null;
+  coupon_id: number | null;
+  is_used: boolean | null;
+  used_at: string | null;
+  coupons?: MaybeArray<{
+    id: number;
+    name: string | null;
+    discount_amount: number | null;
+    expires_at: string | null;
+  }>;
+};
+
 function firstRelation<T>(value: MaybeArray<T>): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -141,6 +155,78 @@ router.get('/me/orders', async (req, res, next) => {
 
     const orders = (data ?? []).map((row) => serializeOrder(row as unknown as OrderSummary));
     res.json({ success: true, message: `${orders.length}개 주문 조회`, data: orders });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/v1/users/me/coupons
+router.get('/me/coupons', async (req, res, next) => {
+  try {
+    const now = new Date().toISOString();
+
+    const { data: activeCoupons, error: couponsError } = await supabase
+      .from('coupons')
+      .select('id')
+      .or(`expires_at.is.null,expires_at.gt.${now}`);
+
+    if (couponsError) {
+      return res.status(400).json({ success: false, message: '쿠폰 조회 실패', error: couponsError.message });
+    }
+
+    const { data: assignedCoupons, error: assignedError } = await supabase
+      .from('user_coupons')
+      .select('coupon_id')
+      .eq('user_id', req.userId!);
+
+    if (assignedError) {
+      return res.status(400).json({ success: false, message: '사용자 쿠폰 조회 실패', error: assignedError.message });
+    }
+
+    const assignedIds = new Set((assignedCoupons ?? []).map((row) => row.coupon_id).filter(Boolean));
+    const missingRows = (activeCoupons ?? [])
+      .filter((coupon) => !assignedIds.has(coupon.id))
+      .map((coupon) => ({
+        user_id: req.userId!,
+        coupon_id: coupon.id,
+        is_used: false,
+      }));
+
+    if (missingRows.length > 0) {
+      const { error: insertError } = await supabase.from('user_coupons').insert(missingRows);
+      if (insertError && insertError.code !== '23505') {
+        return res.status(400).json({ success: false, message: '쿠폰 할당 실패', error: insertError.message });
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('user_coupons')
+      .select('id, user_id, coupon_id, is_used, used_at, coupons(id, name, discount_amount, expires_at)')
+      .eq('user_id', req.userId!)
+      .eq('is_used', false)
+      .order('id', { ascending: false });
+
+    if (error) {
+      return res.status(400).json({ success: false, message: '사용 가능 쿠폰 조회 실패', error: error.message });
+    }
+
+    const coupons = (data ?? [])
+      .map((row) => {
+        const userCoupon = row as unknown as UserCouponSummary;
+        const coupon = firstRelation(userCoupon.coupons);
+        if (!coupon) return null;
+        if (coupon.expires_at && new Date(coupon.expires_at).getTime() <= Date.now()) return null;
+        return {
+          id: userCoupon.id,
+          coupon_id: coupon.id,
+          name: cleanString(coupon.name) ?? 'Discount coupon',
+          discount_amount: Number(coupon.discount_amount) || 0,
+          expires_at: coupon.expires_at,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({ success: true, message: `${coupons.length}개 쿠폰 조회`, data: coupons });
   } catch (e) {
     next(e);
   }
