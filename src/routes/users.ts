@@ -59,6 +59,12 @@ type UserCouponSummary = {
   }>;
 };
 
+const DEFAULT_COUPONS = [
+  { name: 'Welcome Coupon', discount_amount: 3000 },
+  { name: 'First Order Discount', discount_amount: 5000 },
+  { name: 'Free Delivery Coupon', discount_amount: 2000 },
+];
+
 function firstRelation<T>(value: MaybeArray<T>): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -66,6 +72,29 @@ function firstRelation<T>(value: MaybeArray<T>): T | null {
 
 function cleanString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+async function ensureDefaultCoupons() {
+  const names = DEFAULT_COUPONS.map((coupon) => coupon.name);
+  const { data: existing, error: existingError } = await supabase
+    .from('coupons')
+    .select('name')
+    .in('name', names);
+
+  if (existingError) return existingError;
+
+  const existingNames = new Set((existing ?? []).map((row) => row.name));
+  const missingCoupons = DEFAULT_COUPONS.filter(
+    (coupon) => !existingNames.has(coupon.name),
+  ).map((coupon) => ({
+    ...coupon,
+    expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+  }));
+
+  if (missingCoupons.length === 0) return null;
+
+  const { error } = await supabase.from('coupons').insert(missingCoupons);
+  return error;
 }
 
 function serializeOrder(row: OrderSummary) {
@@ -163,6 +192,11 @@ router.get('/me/orders', async (req, res, next) => {
 // GET /api/v1/users/me/coupons
 router.get('/me/coupons', async (req, res, next) => {
   try {
+    const seedError = await ensureDefaultCoupons();
+    if (seedError) {
+      return res.status(400).json({ success: false, message: '기본 쿠폰 생성 실패', error: seedError.message });
+    }
+
     const now = new Date().toISOString();
 
     const { data: activeCoupons, error: couponsError } = await supabase
