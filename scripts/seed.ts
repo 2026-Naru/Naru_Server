@@ -76,7 +76,7 @@ async function seed() {
         address: 'Seoul Gwanak-gu',
         latitude: 37.4861,
         longitude: 126.9263,
-        image_url: 'assets/images/cat_ediya.png',
+        image_url: 'assets/images/ediya.svg',
         rating: 4.6,
         review_count: 421,
       },
