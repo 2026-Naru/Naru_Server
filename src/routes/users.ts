@@ -41,6 +41,9 @@ type OrderSummary = {
   ordered_at?: string | null;
   paid_at?: string | null;
   completed_at?: string | null;
+  store_id?: number | null;
+  store_name?: string | null;
+  store_image?: string | null;
   stores?: MaybeArray<StoreSummary>;
   order_items?: OrderItemSummary[] | null;
 };
@@ -119,13 +122,20 @@ function serializeOrder(row: OrderSummary) {
   const menuStore = firstRelation(
     firstRelation((row.order_items ?? []).find((item) => firstRelation(item.menus)?.stores)?.menus)?.stores,
   );
-  const store = directStore ?? menuStore;
+  const snapshotStore = cleanString(row.store_name) || cleanString(row.store_image)
+    ? {
+        id: null,
+        name: cleanString(row.store_name),
+        image_url: cleanString(row.store_image),
+      }
+    : null;
+  const store = directStore ?? snapshotStore ?? menuStore;
 
   return {
     ...row,
     stores: store,
-    store_name: cleanString(store?.name),
-    store_image_url: cleanString(store?.image_url),
+    store_name: cleanString(store?.name) ?? cleanString(row.store_name),
+    store_image_url: cleanString(store?.image_url) ?? cleanString(row.store_image),
     order_items: orderItems,
   };
 }
@@ -158,7 +168,7 @@ router.get('/me/orders', async (req, res, next) => {
     let q = supabase
       .from('orders')
       .select(`
-        id, status, total_amount, delivery_address, ordered_at, completed_at,
+        id, status, store_id, store_name, store_image, total_amount, delivery_address, ordered_at, completed_at,
         stores(id, name, image_url),
         order_items(
           id, menu_id, quantity, price, menu_name, menu_image,

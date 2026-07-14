@@ -198,6 +198,8 @@ export type Database = {
           id: number;
           user_id: number | null;
           store_id: number | null;
+          store_name: string | null;
+          store_image: string | null;
           delivery_address: string | null;
           total_amount: number | null;
           status: string | null;
@@ -207,12 +209,17 @@ export type Database = {
         Insert: {
           user_id?: number | null;
           store_id?: number | null;
+          store_name?: string | null;
+          store_image?: string | null;
           delivery_address?: string | null;
           total_amount?: number | null;
           status?: string | null;
         };
         Update: {
           status?: string | null;
+          store_id?: number | null;
+          store_name?: string | null;
+          store_image?: string | null;
           delivery_address?: string | null;
           total_amount?: number | null;
           completed_at?: string | null;
