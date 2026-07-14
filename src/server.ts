@@ -49,13 +49,14 @@ app.use(errorHandler);
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT) || 3000;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔═══════════════════════════════════════════╗
 ║      🍽️  Naru Backend Server Started      ║
 ╚═══════════════════════════════════════════╝
 
 📍 Server URL : http://localhost:${PORT}
+📱 Device URL : http://<your-mac-ip>:${PORT}
 🌿 Supabase   : ${process.env.SUPABASE_URL}
 
 ✅ Available Endpoints:

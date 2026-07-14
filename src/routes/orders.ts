@@ -30,6 +30,8 @@ router.post('/', authMiddleware, async (req, res, next) => {
       totalAmount,
       items,
       couponId,
+      storeName,
+      storeImageUrl,
     } = req.body;
 
     if (!['DELIVERY', 'PICKUP'].includes(type)) {
@@ -125,6 +127,33 @@ router.post('/', authMiddleware, async (req, res, next) => {
     const directMenuStoreId =
       [...directMenusById.values()].find((menu) => menu.store_id && menu.store_id > 0)?.store_id ?? null;
     const storeId = firstMenu?.store_id ?? directStoreId ?? directMenuStoreId;
+    const requestedStoreName =
+      typeof storeName === 'string' && storeName.trim() && storeName.trim().toLowerCase() !== 'delivery order'
+        ? storeName.trim()
+        : null;
+    const requestedStoreImage =
+      typeof storeImageUrl === 'string' && storeImageUrl.trim()
+        ? storeImageUrl.trim()
+        : null;
+
+    let catalogStore: { name: string | null; image_url: string | null } | null = null;
+    if (storeId) {
+      const { data, error: storeError } = await supabase
+        .from('stores')
+        .select('name, image_url')
+        .eq('id', storeId)
+        .maybeSingle();
+      if (storeError) {
+        return res.status(400).json({ success: false, message: '가게 정보 조회 실패', error: storeError.message });
+      }
+      catalogStore = data;
+    }
+
+    const orderStoreName = catalogStore?.name ?? requestedStoreName;
+    const orderStoreImage = catalogStore?.image_url ?? requestedStoreImage;
+    if (!storeId && !orderStoreName) {
+      return res.status(400).json({ success: false, message: '주문할 가게 정보가 없습니다.' });
+    }
 
     const calculatedAmount = cartItems.length > 0
       ? cartItems.reduce((sum, ci) => {
@@ -184,11 +213,13 @@ router.post('/', authMiddleware, async (req, res, next) => {
       .insert({
         user_id: req.userId!,
         store_id: storeId,
+        store_name: orderStoreName,
+        store_image: orderStoreImage,
         delivery_address: deliveryAddress ?? null,
         total_amount: orderTotalAmount,
         status: 'PAID',
       })
-      .select('id, status, total_amount, delivery_address, ordered_at')
+      .select('id, status, store_id, store_name, store_image, total_amount, delivery_address, ordered_at')
       .single();
 
     if (orderError) {
@@ -251,6 +282,10 @@ router.get('/:orderId', authMiddleware, async (req, res, next) => {
   try {
     const orderId = Number(req.params.orderId);
 
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ success: false, message: '주문 ID가 올바르지 않습니다.' });
+    }
+
     const { data: order, error } = await supabase
       .from('orders')
       .select(`
@@ -258,6 +293,7 @@ router.get('/:orderId', authMiddleware, async (req, res, next) => {
         order_items(id, menu_id, quantity, price, menu_name, menu_image, menus(name, image_url))
       `)
       .eq('id', orderId)
+      .eq('user_id', req.userId!)
       .maybeSingle();
 
     if (error || !order) {
@@ -270,15 +306,61 @@ router.get('/:orderId', authMiddleware, async (req, res, next) => {
   }
 });
 
-// GET /api/v1/orders/:orderId/status
-router.get('/:orderId/status', async (req, res, next) => {
+// PATCH /api/v1/orders/:orderId/status  [auth]
+router.patch('/:orderId/status', authMiddleware, async (req, res, next) => {
   try {
     const orderId = Number(req.params.orderId);
+    const status = typeof req.body?.status === 'string'
+      ? req.body.status.toUpperCase()
+      : '';
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ success: false, message: '주문 ID가 올바르지 않습니다.' });
+    }
+    if (!Object.prototype.hasOwnProperty.call(ORDER_STATUS_GAUGE, status)) {
+      return res.status(400).json({ success: false, message: '올바르지 않은 주문 상태입니다.' });
+    }
+
+    const update: { status: string; completed_at?: string } = { status };
+    if (status === 'COMPLETED') {
+      update.completed_at = new Date().toISOString();
+    }
+
+    const { data: order, error } = await supabase
+      .from('orders')
+      .update(update)
+      .eq('id', orderId)
+      .eq('user_id', req.userId!)
+      .select('id, status, total_amount, delivery_address, ordered_at, completed_at')
+      .maybeSingle();
+
+    if (error) {
+      return res.status(400).json({ success: false, message: '주문 상태 변경 실패', error: error.message });
+    }
+    if (!order) {
+      return res.status(404).json({ success: false, message: '주문을 찾을 수 없습니다.' });
+    }
+
+    res.json({ success: true, message: '주문 상태 변경 성공', data: order });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/v1/orders/:orderId/status  [auth]
+router.get('/:orderId/status', authMiddleware, async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.orderId);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ success: false, message: '주문 ID가 올바르지 않습니다.' });
+    }
 
     const { data: order, error } = await supabase
       .from('orders')
       .select('status')
       .eq('id', orderId)
+      .eq('user_id', req.userId!)
       .maybeSingle();
 
     if (error || !order) {
